@@ -1,0 +1,20 @@
+# Credenciales: nunca se suben a GitHub
+.env
+
+# Reportes generados automáticamente por el WF3
+reportes/*.csv
+
+# Archivos compilados de Maven
+target/
+
+# Archivos temporales de Word y Excel
+~$*
+~WRL*.tmp
+*.tmp
+
+# Archivos del sistema de Windows
+Thumbs.db
+desktop.ini
+
+# Configuración local de VS Code
+.vscode/
