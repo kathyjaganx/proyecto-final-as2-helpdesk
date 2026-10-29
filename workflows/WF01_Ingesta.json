@@ -1,0 +1,315 @@
+{
+  "name": "WF1 - Ingesta de tickets",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tickets",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -544,
+        -176
+      ],
+      "id": "8668b722-c827-4094-9530-3b1434d96ee5",
+      "name": "Webhook",
+      "webhookId": "3d086ca3-3b77-4975-b2ab-fe7040ba49d6",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "v8vHySaaEi1ep7tI",
+          "name": "API Key Tickets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================\n// WF1 - Validar datos del ticket y ocultar datos sensibles\n// Autora: Irma Yaritza Katiuxca Jagan Xol - 4090-23-9748\n// =====================================================\n\nconst body = $input.first().json.body || {};\nconst errores = [];\nconst CATEGORIAS = ['ACCESO', 'CORREO', 'HARDWARE', 'SOFTWARE', 'RED', 'OTRO'];\n\n// Limpiar los datos recibidos: quitar espacios sobrantes\nconst limpiar = (v) => String(v ?? '').trim().replace(/\\s+/g, ' ');\nconst solicitante = limpiar(body.solicitante);\nconst correo = limpiar(body.correo).toLowerCase();\nconst departamento = limpiar(body.departamento);\nconst categoria = limpiar(body.categoria).toUpperCase();\nconst asunto = limpiar(body.asunto);\nconst descripcionOriginal = String(body.descripcion ?? '').trim();\n\n// 1. Solicitante: solo letras y espacios, de 3 a 100 caracteres\nif (!/^[A-Za-zÁÉÍÓÚáéíóúÑñÜü ]{3,100}$/.test(solicitante)) {\n  errores.push('Solicitante inválido. Solo letras y espacios (3 a 100 caracteres)');\n}\n\n// 2. Correo: formato usuario@dominio.ext, máximo 120 caracteres\nif (correo.length > 120 || !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(correo)) {\n  errores.push('Correo inválido. Formato esperado: usuario@dominio.com');\n}\n\n// 3. Departamento: letras, números y espacios, de 2 a 60 caracteres\nif (!/^[A-Za-zÁÉÍÓÚáéíóúÑñÜü0-9 ]{2,60}$/.test(departamento)) {\n  errores.push('Departamento inválido. Solo letras, números y espacios (2 a 60 caracteres)');\n}\n\n// 4. Categoría: una de la lista\nif (!CATEGORIAS.includes(categoria)) {\n  errores.push('Categoría inválida. Valores permitidos: ' + CATEGORIAS.join(', '));\n}\n\n// 5. Asunto: de 5 a 150 caracteres, sin < ni > (evita que se envíe código HTML)\nif (asunto.length < 5 || asunto.length > 150 || /[<>]/.test(asunto)) {\n  errores.push('Asunto inválido. De 5 a 150 caracteres, sin los símbolos < ni >');\n}\n\n// 6. Descripción: de 10 a 2000 caracteres, sin < ni >\nif (descripcionOriginal.length < 10 || descripcionOriginal.length > 2000 || /[<>]/.test(descripcionOriginal)) {\n  errores.push('Descripción inválida. De 10 a 2000 caracteres, sin los símbolos < ni >');\n}\n\n// Protección de datos sensibles: ocultar contraseñas y números de tarjeta\n// antes de que la descripción llegue a la base de datos o a la auditoría\nconst patronClave = /\\b(contraseñas?|contrasenas?|claves?|password|pass|pin)\\b(\\s*(?:es|era|:|=)?\\s*)(\\S+)/gi;\nconst patronTarjeta = /\\b(?:\\d[ -]?){13,19}\\b/g;\nconst descripcion = descripcionOriginal\n  .replace(patronClave, (_, palabra, separador) => `${palabra}${separador}[OCULTO]`)\n  .replace(patronTarjeta, '[NÚMERO OCULTO]');\nconst datos_ocultados = descripcion !== descripcionOriginal;\n\nreturn [{\n  json: {\n    valido: errores.length === 0,\n    errores,\n    datos: { solicitante, correo, departamento, categoria, asunto, descripcion, datos_ocultados }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        -176
+      ],
+      "id": "a128ea65-5baa-42a8-82fa-af72a44222ac",
+      "name": "Validar datos"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7f4762cf-4b47-43fa-ad3e-18f4c1d5f4b4",
+              "leftValue": "={{ $json.valido }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -96,
+        -176
+      ],
+      "id": "bee396c3-2a51-4c14-b78e-163832911e8e",
+      "name": "¿Datos validos?"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "auditoria",
+          "mode": "list",
+          "cachedResultName": "auditoria"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow": "WF1 - Ingesta de tickets",
+            "accion": "VALIDAR_TICKET",
+            "resultado": "RECHAZADO",
+            "detalle": "={{ JSON.stringify({ errores: $json.errores, datos: $json.datos }) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "id_auditoria",
+              "displayName": "id_auditoria",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "fecha",
+              "displayName": "fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "workflow",
+              "displayName": "workflow",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "accion",
+              "displayName": "accion",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "resultado",
+              "displayName": "resultado",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "detalle",
+              "displayName": "detalle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        128,
+        -16
+      ],
+      "id": "8a2975a3-ab4d-43f0-8cc0-55755ba99f9c",
+      "name": "Auditoria rechazo",
+      "credentials": {
+        "postgres": {
+          "id": "JSROm2OdgVKJrbVa",
+          "name": "Postgres Helpdesk"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"estado\": \"RECHAZADO\", \"mensaje\": \"El ticket tiene datos invalidos\", \"errores\": $('Validar datos').item.json.errores } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        368,
+        -16
+      ],
+      "id": "70b3d41f-b8cb-4de7-b72e-5a86e4f16a86",
+      "name": "Responder rechazo"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "QY3gF7jwKkZuwxMx",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/QY3gF7jwKkZuwxMx",
+          "cachedResultName": "WF2 – Procesamiento de tickets"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        128,
+        -272
+      ],
+      "id": "9e0f1e35-08d4-4686-ad07-49dc5708a0a9",
+      "name": "Procesar en WF2"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 201
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        352,
+        -272
+      ],
+      "id": "46883917-f08a-4a83-b144-347731baed18",
+      "name": "Responder resultado"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validar datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar datos": {
+      "main": [
+        [
+          {
+            "node": "¿Datos validos?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Datos validos?": {
+      "main": [
+        [
+          {
+            "node": "Procesar en WF2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Auditoria rechazo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auditoria rechazo": {
+      "main": [
+        [
+          {
+            "node": "Responder rechazo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar en WF2": {
+      "main": [
+        [
+          {
+            "node": "Responder resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "4c6a7011-d97e-4bf7-bc4d-13f89a235ff6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b9cc720a8d6e00a32e69982046e2b724a43317abd2c5c33e73eb49beeb507a8d"
+  },
+  "nodeGroups": [],
+  "id": "UskjdnlrjT0ROsN5",
+  "tags": []
+}

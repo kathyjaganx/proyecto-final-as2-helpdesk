@@ -1,0 +1,472 @@
+{
+  "name": "WF2 – Procesamiento de tickets",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -464,
+        -128
+      ],
+      "id": "6c28d150-3ca9-4db3-8a8d-7169dcd41b43",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================\n// WF2 - Clasificar la prioridad del ticket\n// Autora: Irma Yaritza Katiuxca Jagan Xol - 4090-23-9748\n// =====================================================\n\nconst d = $input.first().json.datos;\nconst texto = `${d.asunto} ${d.descripcion}`.toLowerCase();\n\nconst URGENTE = ['urgente', 'caído', 'caido', 'caída', 'caida', 'no funciona', 'no enciende',\n                 'sin internet', 'no hay internet', 'servidor', 'virus', 'hackeo', 'bloqueado', 'bloqueada'];\nconst MENOR = ['consulta', 'duda', 'instalar', 'instalación', 'instalacion', 'solicitud',\n               'cuando puedan', 'no es urgente'];\nconst HORAS = { ALTA: 4, MEDIA: 24, BAJA: 72 };\n\n// \"no es urgente\" no debe contar como urgente\nconst textoUrgencia = texto.replaceAll('no es urgente', '');\nconst palabraUrgente = URGENTE.find(p => textoUrgencia.includes(p));\nconst palabraMenor = MENOR.find(p => texto.includes(p));\n\nlet prioridad, motivo;\nif (palabraUrgente) {\n  prioridad = 'ALTA';\n  motivo = `Contiene \"${palabraUrgente}\"`;\n} else if (palabraMenor) {\n  prioridad = 'BAJA';\n  motivo = `Contiene \"${palabraMenor}\"`;\n} else if (d.categoria === 'OTRO') {\n  prioridad = 'BAJA';\n  motivo = 'Categoría OTRO';\n} else {\n  prioridad = 'MEDIA';\n  motivo = 'Prioridad normal';\n}\n\nreturn [{ json: { ...d, prioridad, motivo_prioridad: motivo, horas_limite: HORAS[prioridad] } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        -320
+      ],
+      "id": "1d24b902-5338-4931-ae4a-780b64e3267f",
+      "name": "Clasificar prioridad"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT t.id_tecnico, t.nombre, COUNT(k.id_ticket) AS tickets_abiertos\nFROM tecnicos t\nLEFT JOIN tickets k\n       ON k.id_tecnico = t.id_tecnico\n      AND k.estado IN ('ABIERTO', 'EN_PROCESO')\nWHERE t.activo = TRUE\n  AND t.especialidad IN ($1, 'GENERAL')\nGROUP BY t.id_tecnico, t.nombre, t.especialidad\nORDER BY (t.especialidad = 'GENERAL'), COUNT(k.id_ticket), t.id_tecnico\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ $json.categoria }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -208,
+        192
+      ],
+      "id": "b75ce5a6-ac36-4d6e-ba96-84901a3aaa70",
+      "name": "Elegir tecnico",
+      "credentials": {
+        "postgres": {
+          "id": "JSROm2OdgVKJrbVa",
+          "name": "Postgres Helpdesk"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tickets",
+          "mode": "list",
+          "cachedResultName": "tickets"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "datos_ocultados": "={{ $('Clasificar prioridad').item.json.datos_ocultados }}",
+            "escalado": false,
+            "solicitante": "={{ $('Clasificar prioridad').item.json.solicitante }}",
+            "correo": "={{ $('Clasificar prioridad').item.json.correo }}",
+            "departamento": "={{ $('Clasificar prioridad').item.json.departamento }}",
+            "categoria": "={{ $('Clasificar prioridad').item.json.categoria }}",
+            "asunto": "={{ $('Clasificar prioridad').item.json.asunto }}",
+            "descripcion": "={{ $('Clasificar prioridad').item.json.descripcion }}",
+            "prioridad": "={{ $('Clasificar prioridad').item.json.prioridad }}",
+            "id_tecnico": "={{ $json.id_tecnico }}",
+            "fecha_limite": "={{ $now.plus({ hours: $('Clasificar prioridad').item.json.horas_limite }).toFormat('yyyy-MM-dd HH:mm:ss') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "id_ticket",
+              "displayName": "id_ticket",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "solicitante",
+              "displayName": "solicitante",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "correo",
+              "displayName": "correo",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "departamento",
+              "displayName": "departamento",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "categoria",
+              "displayName": "categoria",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "asunto",
+              "displayName": "asunto",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "descripcion",
+              "displayName": "descripcion",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "datos_ocultados",
+              "displayName": "datos_ocultados",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "prioridad",
+              "displayName": "prioridad",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "estado",
+              "displayName": "estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "id_tecnico",
+              "displayName": "id_tecnico",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "escalado",
+              "displayName": "escalado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fecha_limite",
+              "displayName": "fecha_limite",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "creado_en",
+              "displayName": "creado_en",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "actualizado_en",
+              "displayName": "actualizado_en",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -112,
+        -336
+      ],
+      "id": "e1230905-3ee5-4b31-98be-439e1a429d59",
+      "name": "Registrar ticket",
+      "credentials": {
+        "postgres": {
+          "id": "JSROm2OdgVKJrbVa",
+          "name": "Postgres Helpdesk"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "auditoria",
+          "mode": "list",
+          "cachedResultName": "auditoria"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow": "WF2 - Procesamiento de tickets",
+            "accion": "REGISTRAR_TICKET",
+            "resultado": "EXITO",
+            "detalle": "={{ JSON.stringify({ id_ticket: $json.id_ticket, prioridad: $json.prioridad, motivo: $('Clasificar prioridad').item.json.motivo_prioridad, tecnico: $('Elegir tecnico').item.json.nombre, datos_ocultados: $json.datos_ocultados }) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "id_auditoria",
+              "displayName": "id_auditoria",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "fecha",
+              "displayName": "fecha",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "workflow",
+              "displayName": "workflow",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "accion",
+              "displayName": "accion",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "resultado",
+              "displayName": "resultado",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "detalle",
+              "displayName": "detalle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -32,
+        208
+      ],
+      "id": "6bf577f9-bfbb-445a-ac98-e3ec58330a25",
+      "name": "Auditoria ticket",
+      "credentials": {
+        "postgres": {
+          "id": "JSROm2OdgVKJrbVa",
+          "name": "Postgres Helpdesk"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "750ea68d-aa8b-4471-8006-c3c6afefc844",
+              "name": "estado",
+              "value": "REGISTRADO",
+              "type": "string"
+            },
+            {
+              "id": "5933cb79-12c8-42ac-874d-48d27ec9d69c",
+              "name": "mensaje",
+              "value": "Ticket registrado correctamente",
+              "type": "string"
+            },
+            {
+              "id": "a570f175-1df2-4b02-9bb5-5c1feafefbc9",
+              "name": "id_ticket",
+              "value": "={{ $('Registrar ticket').item.json.id_ticket }}",
+              "type": "number"
+            },
+            {
+              "id": "073d12eb-316b-4cfa-912f-725205123793",
+              "name": "prioridad",
+              "value": "={{ $('Registrar ticket').item.json.prioridad }}",
+              "type": "string"
+            },
+            {
+              "id": "dabe2d25-4207-4a71-a6de-fcb9af7845d5",
+              "name": "tecnico",
+              "value": "={{ $('Elegir tecnico').item.json.nombre }}",
+              "type": "string"
+            },
+            {
+              "id": "51379693-d161-4eb3-802f-dd841d0fc3a2",
+              "name": "fecha_limite",
+              "value": "={{ $('Registrar ticket').item.json.fecha_limite }}",
+              "type": "string"
+            },
+            {
+              "id": "7221f4fd-dd3e-4338-bccb-35f98b4a78da",
+              "name": "datos_ocultados\t",
+              "value": "={{ $('Registrar ticket').item.json.datos_ocultados }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        80,
+        -272
+      ],
+      "id": "e405049e-89d7-4367-ad6f-26b894196183",
+      "name": "Resultado"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Clasificar prioridad",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clasificar prioridad": {
+      "main": [
+        [
+          {
+            "node": "Elegir tecnico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Elegir tecnico": {
+      "main": [
+        [
+          {
+            "node": "Registrar ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Registrar ticket": {
+      "main": [
+        [
+          {
+            "node": "Auditoria ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auditoria ticket": {
+      "main": [
+        [
+          {
+            "node": "Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "fb091a18-6db5-4253-8192-549180e10fd7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b9cc720a8d6e00a32e69982046e2b724a43317abd2c5c33e73eb49beeb507a8d"
+  },
+  "nodeGroups": [],
+  "id": "QY3gF7jwKkZuwxMx",
+  "tags": []
+}
